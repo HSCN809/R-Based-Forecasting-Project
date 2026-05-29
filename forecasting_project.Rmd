@@ -1,0 +1,363 @@
+---
+title: "R-Based Forecasting Project Using TÜİK Data"
+author: "Hüseyin Berat Özen"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 9,
+  fig.height = 5
+)
+
+Sys.setenv(CURL_SSL_BACKEND = "openssl")
+
+required_packages <- c(
+  "tuikr", "curl", "jsonlite", "tibble", "dplyr", "tidyr",
+  "ggplot2", "zoo", "forecast"
+)
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  stop("Missing required packages: ", paste(missing_packages, collapse = ", "))
+}
+
+library(dplyr)
+library(ggplot2)
+
+dir.create("outputs/tables", recursive = TRUE, showWarnings = FALSE)
+dir.create("outputs/figures", recursive = TRUE, showWarnings = FALSE)
+
+source("R/data_import.R")
+source("R/forecasting_methods.R")
+source("R/accuracy_measures.R")
+source("R/plots.R")
+```
+
+# Project Overview
+
+This project develops a reproducible R-based forecasting workflow using a TÜİK time series. The selected variable is the monthly rate of change in the Agricultural Products Producer Price Index. The goal is to compare alternative forecasting methods and forecast the next monthly period after the latest available TÜİK observation.
+
+# Student Information
+
+```{r student-info}
+source_info <- project_source_info()
+student_info <- data.frame(
+  Field = c("Student Name", "Student Number"),
+  Value = c(source_info$student_name, source_info$student_number)
+)
+student_info
+```
+
+# TÜİK Data Source Information
+
+```{r data-source}
+source_table <- data.frame(
+  Field = c(
+    "TÜİK Data Set Name",
+    "TÜİK Theme / Category",
+    "TÜİK Table Name",
+    "tuikr Dataflow ID",
+    "Selected Variable",
+    "Data Frequency",
+    "Data Access Date"
+  ),
+  Value = c(
+    source_info$dataset_name,
+    source_info$theme,
+    source_info$table_name,
+    source_info$dataflow_id,
+    source_info$selected_variable,
+    source_info$frequency,
+    source_info$access_date
+  )
+)
+source_table
+```
+
+# Data Access Through `tuikr`
+
+The dataflow is first verified through `tuikr::statistical_tables(theme = 6)`. On this machine, `tuikr::statistical_data()` returns HTTP 401 for SDMX downloads, so the notebook uses the verified dataflow ID to retrieve the same live Data Browser JSON in R. No manually downloaded or manually edited data file is used.
+
+```{r import-data}
+import_result <- fetch_selected_series()
+
+verified_table <- import_result$verified_table
+series <- import_result$series
+
+verified_table
+```
+
+```{r selected-series-summary}
+latest_observation <- max(series$period)
+forecast_target_period <- next_month_period(latest_observation)
+
+coverage_table <- data.frame(
+  Field = c("Time Coverage", "Latest Available Observation", "Forecast Target Period", "Number of Observations"),
+  Value = c(
+    paste(min(series$period), "/", max(series$period)),
+    latest_observation,
+    forecast_target_period,
+    nrow(series)
+  )
+)
+coverage_table
+```
+
+# Use of TÜİK Data in R
+
+The imported data are filtered in R to the total Agricultural Products Producer Price Index series for Türkiye, monthly frequency, base year 2020, and the variable "Change compared to the previous month (%)". The period column is converted to a monthly date and observations are sorted chronologically.
+
+```{r cleaned-data-preview}
+head(series, 10)
+tail(series, 10)
+```
+
+# Exploratory Time Series Analysis
+
+```{r actual-plot}
+actual_plot <- save_actual_series_plot(
+  series,
+  "outputs/figures/actual_series_plot.png"
+)
+actual_plot
+```
+
+```{r descriptive-statistics}
+summary_stats <- data.frame(
+  Mean = mean(series$value),
+  Median = median(series$value),
+  Minimum = min(series$value),
+  Maximum = max(series$value),
+  Standard_Deviation = stats::sd(series$value)
+)
+summary_stats
+```
+
+```{r trend-seasonality-assessment}
+series$time_index <- seq_len(nrow(series))
+trend_model_exploratory <- lm(value ~ time_index, data = series)
+monthly_means <- series |>
+  mutate(month = format(date, "%m")) |>
+  group_by(month) |>
+  summarise(mean_monthly_change = mean(value), .groups = "drop")
+
+data.frame(
+  Trend_Slope = coef(trend_model_exploratory)[["time_index"]],
+  Trend_P_Value = summary(trend_model_exploratory)$coefficients["time_index", "Pr(>|t|)"]
+)
+
+monthly_means
+```
+
+# Forecasting Setup
+
+The last 24 monthly observations are used as a holdout period. Accuracy measures are calculated on the same holdout period for all applicable methods.
+
+```{r forecasting-setup}
+forecast_results <- run_all_forecasts(series, holdout = 24)
+forecast_data <- forecast_results$data
+test_data <- forecast_data$test
+
+data.frame(
+  Training_Start = min(forecast_data$train$period),
+  Training_End = max(forecast_data$train$period),
+  Test_Start = min(test_data$period),
+  Test_End = max(test_data$period),
+  Holdout_Months = nrow(test_data)
+)
+```
+
+# Required Forecasting Methods
+
+```{r method-accuracy}
+accuracy_rows <- lapply(forecast_results$methods, function(method_result) {
+  applicable <- if (is.null(method_result$applicable)) TRUE else method_result$applicable
+  comparison_row(
+    method_result$method,
+    test_data$value,
+    method_result$forecast,
+    method_result$next_forecast,
+    applicable = applicable,
+    note = method_result$note
+  )
+})
+
+accuracy_comparison <- bind_rows(accuracy_rows) |>
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+write.csv(
+  accuracy_comparison,
+  "outputs/tables/accuracy_comparison.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
+
+accuracy_comparison
+```
+
+## Naïve Forecasting
+
+The naïve method uses the most recent actual value as the one-step-ahead forecast.
+
+```{r naive-plot}
+method_lookup <- setNames(forecast_results$methods, vapply(forecast_results$methods, `[[`, character(1), "method"))
+naive_result <- method_lookup[["Naïve Forecasting"]]
+save_forecast_plot(test_data, naive_result$forecast, naive_result$method, "outputs/figures/naive_forecast_plot.png")
+```
+
+## Moving Average
+
+The moving average method tests 3-month, 6-month, and 12-month windows. The selected window minimizes holdout MAD.
+
+```{r moving-average-plot}
+moving_average_result <- method_lookup[["Moving Average"]]
+moving_average_result$note
+save_forecast_plot(test_data, moving_average_result$forecast, moving_average_result$method, "outputs/figures/moving_average_plot.png")
+```
+
+## Weighted Moving Average
+
+Weights are assigned to the latest three observations, with more importance given to the most recent month.
+
+```{r weighted-moving-average-plot}
+weighted_ma_result <- method_lookup[["Weighted Moving Average"]]
+weighted_ma_result$note
+save_forecast_plot(test_data, weighted_ma_result$forecast, weighted_ma_result$method, "outputs/figures/weighted_moving_average_plot.png")
+```
+
+## Exponential Smoothing
+
+Single exponential smoothing is estimated through `HoltWinters()` with a level component only.
+
+```{r exponential-smoothing-plot}
+exponential_result <- method_lookup[["Exponential Smoothing"]]
+exponential_result$note
+save_forecast_plot(test_data, exponential_result$forecast, exponential_result$method, "outputs/figures/exponential_smoothing_plot.png")
+```
+
+## Trend-Adjusted Exponential Smoothing
+
+This method is considered because the series may contain medium-term movement even though monthly changes are volatile.
+
+```{r trend-adjusted-plot}
+trend_adjusted_result <- method_lookup[["Trend-Adjusted Exponential Smoothing"]]
+trend_adjusted_result$note
+save_forecast_plot(test_data, trend_adjusted_result$forecast, trend_adjusted_result$method, "outputs/figures/trend_adjusted_smoothing_plot.png")
+```
+
+## Linear Trend Projection
+
+The linear trend projection estimates a trend equation using a time index.
+
+```{r trend-projection-plot}
+linear_trend_result <- method_lookup[["Linear Trend Projection"]]
+linear_trend_result$note
+summary(linear_trend_result$model)
+save_forecast_plot(test_data, linear_trend_result$forecast, linear_trend_result$method, "outputs/figures/trend_projection_plot.png")
+```
+
+## Seasonal Indices
+
+The series is monthly, so 12 additive seasonal indices are estimated.
+
+```{r seasonal-indices-plot}
+seasonal_result <- method_lookup[["Seasonal Indices"]]
+seasonal_result$seasonal_index
+save_forecast_plot(test_data, seasonal_result$forecast, seasonal_result$method, "outputs/figures/seasonal_indices_plot.png")
+```
+
+## Additive Decomposition
+
+Additive decomposition is suitable because the series is measured as monthly percentage change and contains negative values.
+
+```{r additive-decomposition-plot}
+additive_result <- method_lookup[["Additive Decomposition"]]
+plot(additive_result$decomposition)
+save_forecast_plot(test_data, additive_result$forecast, additive_result$method, "outputs/figures/additive_decomposition_plot.png")
+```
+
+## Multiplicative Decomposition
+
+Multiplicative decomposition is not suitable because the monthly rate-of-change series contains negative values. Multiplicative decomposition requires strictly positive values.
+
+```{r multiplicative-decomposition}
+method_lookup[["Multiplicative Decomposition"]]$note
+```
+
+## Regression with Trend and Seasonal Dummy Variables
+
+This regression uses a time trend and monthly seasonal dummy variables.
+
+```{r regression-seasonal-plot}
+regression_result <- method_lookup[["Regression with Trend and Seasonal Dummy Variables"]]
+regression_result$note
+summary(regression_result$model)
+save_forecast_plot(test_data, regression_result$forecast, regression_result$method, "outputs/figures/regression_seasonal_dummy_plot.png")
+```
+
+# Superior Method Selection
+
+```{r superior-method}
+eligible_methods <- accuracy_comparison |>
+  filter(Applicable) |>
+  arrange(MAPE, MAD, abs(Tracking_Signal))
+
+superior_method_name <- eligible_methods$Method[1]
+superior_result <- method_lookup[[superior_method_name]]
+superior_forecast <- superior_result$next_forecast
+
+final_forecast <- data.frame(
+  Selected_Superior_Method = superior_method_name,
+  Data_Access_Date = source_info$access_date,
+  Latest_Available_Observation = latest_observation,
+  Forecast_Target_Period = forecast_target_period,
+  Forecasted_Value = round(superior_forecast, 4),
+  Interpretation = paste(
+    "The selected method forecasts the monthly rate of change in the Agricultural Products Producer Price Index for",
+    forecast_target_period,
+    "as",
+    round(superior_forecast, 4),
+    "percent."
+  )
+)
+
+write.csv(
+  final_forecast,
+  "outputs/tables/final_forecast.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
+
+final_forecast
+```
+
+The superior method is selected from applicable methods using holdout MAPE and MAD, while also checking whether the method is structurally reasonable for a monthly series with seasonality and volatile percentage changes. The chosen method is therefore based on both quantitative accuracy and suitability to the data structure.
+
+```{r superior-plot}
+save_superior_plot(
+  series,
+  forecast_target_period,
+  superior_forecast,
+  superior_method_name,
+  "outputs/figures/superior_method_plot.png"
+)
+```
+
+# Limitations
+
+The series measures monthly percentage change, which can be volatile and negative. This makes multiplicative decomposition unsuitable. The notebook uses the live TÜİK dataflow verified through `tuikr::statistical_tables()`, but the SDMX download helper `tuikr::statistical_data()` returned HTTP 401 in the local environment, so the verified dataflow is accessed through the TÜİK Data Browser JSON endpoint in reproducible R code.
+
+# Reproducibility Notes
+
+Run the notebook from the project root. The script creates the required `outputs/tables` and `outputs/figures` folders automatically and does not use any manually downloaded data file.
