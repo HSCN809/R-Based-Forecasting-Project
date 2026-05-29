@@ -91,6 +91,7 @@ eligible_methods <- accuracy_comparison |>
   arrange(MAPE, MAD, abs(Tracking_Signal))
 
 superior_method_name <- eligible_methods$Method[1]
+superior_accuracy <- eligible_methods[1, ]
 superior_result <- method_lookup[[superior_method_name]]
 superior_forecast <- superior_result$next_forecast
 
@@ -100,6 +101,12 @@ final_forecast <- data.frame(
   Latest_Available_Observation = latest_observation,
   Forecast_Target_Period = forecast_target_period,
   Forecasted_Value = round(superior_forecast, 4),
+  Bias = round(superior_accuracy$Bias, 4),
+  MAD = round(superior_accuracy$MAD, 4),
+  MSE = round(superior_accuracy$MSE, 4),
+  MAPE = round(superior_accuracy$MAPE, 4),
+  RSFE = round(superior_accuracy$RSFE, 4),
+  Tracking_Signal = round(superior_accuracy$Tracking_Signal, 4),
   Interpretation = paste(
     "The selected method forecasts the monthly rate of change in the Agricultural Products Producer Price Index for",
     forecast_target_period,

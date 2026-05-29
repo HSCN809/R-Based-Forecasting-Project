@@ -1,2 +1,2 @@
-"Selected_Superior_Method","Data_Access_Date","Latest_Available_Observation","Forecast_Target_Period","Forecasted_Value","Interpretation"
-"Seasonal Indices","2026-05-29","2026-04","2026-05",-0.6638,"The selected method forecasts the monthly rate of change in the Agricultural Products Producer Price Index for 2026-05 as -0.6638 percent."
+"Selected_Superior_Method","Data_Access_Date","Latest_Available_Observation","Forecast_Target_Period","Forecasted_Value","Bias","MAD","MSE","MAPE","RSFE","Tracking_Signal","Interpretation"
+"Seasonal Indices","2026-05-29","2026-04","2026-05",-0.6638,0.8643,3.2207,23.4624,204.033,20.743,6.4406,"The selected method forecasts the monthly rate of change in the Agricultural Products Producer Price Index for 2026-05 as -0.6638 percent."

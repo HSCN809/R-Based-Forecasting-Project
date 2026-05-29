@@ -23,7 +23,7 @@ The selected TÜİK dataflow is verified in R through the `tuikr` package. The s
 | Time coverage | 2010-02 / 2026-04 |
 | Latest available observation | 2026-04 |
 | Forecast target period | 2026-05 |
-| Date of data access | Generated at runtime with `Sys.Date()` |
+| Date of data access | 2026-05-29, regenerated at runtime with `Sys.Date()` |
 | R package used for dataflow verification | `tuikr` |
 | Package source | <https://github.com/emraher/tuikr> |
 
