@@ -1,3 +1,6 @@
+source("R/dependencies.R")
+ensure_project_packages()
+
 library(dplyr)
 library(ggplot2)
 
@@ -16,7 +19,7 @@ series <- import_result$series
 latest_observation <- max(series$period)
 forecast_target_period <- next_month_period(latest_observation)
 
-save_actual_series_plot(series, "outputs/figures/actual_series_plot.png")
+invisible(save_actual_series_plot(series, "outputs/figures/actual_series_plot.png"))
 
 forecast_results <- run_all_forecasts(series, holdout = 24)
 test_data <- forecast_results$data$test
@@ -43,6 +46,21 @@ accuracy_comparison <- bind_rows(accuracy_rows) |>
 write.csv(
   accuracy_comparison,
   "outputs/tables/accuracy_comparison.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
+
+# Save the period-by-period errors required to reproduce the accuracy table.
+forecast_errors <- bind_rows(lapply(
+  forecast_results$methods,
+  forecast_error_rows,
+  test_data = test_data
+)) |>
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+write.csv(
+  forecast_errors,
+  "outputs/tables/forecast_errors.csv",
   row.names = FALSE,
   fileEncoding = "UTF-8"
 )
@@ -98,13 +116,13 @@ write.csv(
   fileEncoding = "UTF-8"
 )
 
-save_superior_plot(
+invisible(save_superior_plot(
   series,
   forecast_target_period,
   superior_forecast,
   superior_method_name,
   "outputs/figures/superior_method_plot.png"
-)
+))
 
 print(accuracy_comparison)
 print(final_forecast)

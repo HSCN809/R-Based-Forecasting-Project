@@ -3,12 +3,14 @@ prepare_forecast_data <- function(series, holdout = 24) {
     stop("Series is too short for the requested holdout window.", call. = FALSE)
   }
 
+  # Use one shared holdout split so all methods are compared on identical periods.
   train <- series[seq_len(nrow(series) - holdout), ]
   test <- series[(nrow(series) - holdout + 1):nrow(series), ]
 
   list(train = train, test = test, full = series, holdout = holdout)
 }
 
+# Convert the cleaned monthly data frame to an R time-series object.
 series_ts <- function(series) {
   start_year <- as.integer(format(min(series$date), "%Y"))
   start_month <- as.integer(format(min(series$date), "%m"))
@@ -19,6 +21,7 @@ rolling_mean_forecast <- function(history, window) {
   stats::filter(history, rep(1 / window, window), sides = 1)
 }
 
+# Generate rolling one-step-ahead forecasts for the holdout period.
 one_step_moving_average <- function(full_values, train_n, test_n, window) {
   forecasts <- numeric(test_n)
 
@@ -31,6 +34,7 @@ one_step_moving_average <- function(full_values, train_n, test_n, window) {
   forecasts
 }
 
+# Apply recency-weighted one-step-ahead forecasts over the holdout period.
 one_step_weighted_moving_average <- function(full_values, train_n, test_n, weights) {
   forecasts <- numeric(test_n)
   window <- length(weights)
@@ -66,6 +70,7 @@ forecast_moving_average <- function(data, windows = c(3, 6, 12)) {
   train_n <- nrow(data$train)
   test_n <- nrow(data$test)
 
+  # Select the window that minimizes holdout MAD among the tested alternatives.
   candidates <- lapply(windows, function(window) {
     forecast <- one_step_moving_average(full_values, train_n, test_n, window)
     mad <- mean(abs(data$test$value - forecast))
@@ -181,6 +186,7 @@ forecast_seasonal_indices <- function(data) {
   test$month <- factor(format(test$date, "%m"), levels = sprintf("%02d", 1:12))
   full$month <- factor(format(full$date, "%m"), levels = sprintf("%02d", 1:12))
 
+  # Estimate additive monthly effects relative to the training mean.
   train_mean <- mean(train$value)
   seasonal_index <- stats::aggregate(value ~ month, data = train, FUN = function(x) mean(x) - train_mean)
   names(seasonal_index)[2] <- "seasonal_effect"
@@ -206,6 +212,7 @@ forecast_additive_decomposition <- function(data) {
   train_ts <- series_ts(data$train)
   full_ts <- series_ts(data$full)
 
+  # Decompose trend and seasonal components, then project the trend one step ahead.
   train_dec <- stats::decompose(train_ts, type = "additive")
   full_dec <- stats::decompose(full_ts, type = "additive")
 
@@ -269,6 +276,7 @@ forecast_regression_seasonal <- function(data) {
 run_all_forecasts <- function(series, holdout = 24) {
   data <- prepare_forecast_data(series, holdout)
 
+  # Required methods are applied where technically suitable for the selected series.
   applicable <- list(
     forecast_naive(data),
     forecast_moving_average(data),

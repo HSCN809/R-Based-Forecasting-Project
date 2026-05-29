@@ -7,6 +7,8 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
+    theme: null
+    highlight: null
 ---
 
 ```{r setup, include=FALSE}
@@ -20,24 +22,17 @@ knitr::opts_chunk$set(
 
 Sys.setenv(CURL_SSL_BACKEND = "openssl")
 
-required_packages <- c(
-  "tuikr", "curl", "jsonlite", "tibble", "dplyr", "tidyr",
-  "ggplot2", "zoo", "forecast"
-)
-missing_packages <- required_packages[
-  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
-]
-
-if (length(missing_packages) > 0) {
-  stop("Missing required packages: ", paste(missing_packages, collapse = ", "))
-}
+source("R/dependencies.R")
+ensure_project_packages()
 
 library(dplyr)
 library(ggplot2)
 
+# Create output folders before any table or figure is written.
 dir.create("outputs/tables", recursive = TRUE, showWarnings = FALSE)
 dir.create("outputs/figures", recursive = TRUE, showWarnings = FALSE)
 
+# Load the reproducible data access, forecasting, accuracy, and plotting helpers.
 source("R/data_import.R")
 source("R/forecasting_methods.R")
 source("R/accuracy_measures.R")
@@ -87,7 +82,7 @@ source_table
 
 # Data Access Through `tuikr`
 
-The dataflow is first verified through `tuikr::statistical_tables(theme = 6)`. On this machine, `tuikr::statistical_data()` returns HTTP 401 for SDMX downloads, so the notebook uses the verified dataflow ID to retrieve the same live Data Browser JSON in R. No manually downloaded or manually edited data file is used.
+The dataflow is first verified through `tuikr::statistical_tables(theme = 6)`. On this machine, `tuikr::statistical_data()` returns HTTP 401 for SDMX downloads, so the notebook uses the verified dataflow ID to retrieve the same live Data Browser JSON in R. This R-based fallback was approved for the course after the SDMX 401 issue was documented. No manually downloaded or manually edited data file is used.
 
 ```{r import-data}
 import_result <- fetch_selected_series()
@@ -121,6 +116,26 @@ The imported data are filtered in R to the total Agricultural Products Producer 
 ```{r cleaned-data-preview}
 head(series, 10)
 tail(series, 10)
+```
+
+```{r data-quality-checks}
+data_quality <- data.frame(
+  Check = c(
+    "Missing values in selected variable",
+    "Duplicate periods",
+    "Missing monthly periods",
+    "Minimum value",
+    "Maximum value"
+  ),
+  Result = c(
+    sum(is.na(series$value)),
+    sum(duplicated(series$period)),
+    length(seq(min(series$date), max(series$date), by = "month")) - nrow(series),
+    round(min(series$value), 4),
+    round(max(series$value), 4)
+  )
+)
+data_quality
 ```
 
 # Exploratory Time Series Analysis
@@ -158,7 +173,16 @@ data.frame(
 )
 
 monthly_means
+
+data.frame(
+  Highest_Average_Month = monthly_means$month[which.max(monthly_means$mean_monthly_change)],
+  Highest_Average_Change = round(max(monthly_means$mean_monthly_change), 4),
+  Lowest_Average_Month = monthly_means$month[which.min(monthly_means$mean_monthly_change)],
+  Lowest_Average_Change = round(min(monthly_means$mean_monthly_change), 4)
+)
 ```
+
+The exploratory results indicate a volatile monthly percentage-change series with recurring monthly differences. The linear trend slope is small relative to the monthly variation, so methods that can handle seasonal movement and short-term volatility should be compared rather than selecting a trend-only model automatically.
 
 # Forecasting Setup
 
@@ -206,6 +230,25 @@ write.csv(
 accuracy_comparison
 ```
 
+```{r forecast-error-table}
+# Store the period-by-period forecast errors behind the aggregate accuracy measures.
+forecast_errors <- bind_rows(lapply(
+  forecast_results$methods,
+  forecast_error_rows,
+  test_data = test_data
+)) |>
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+write.csv(
+  forecast_errors,
+  "outputs/tables/forecast_errors.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
+
+head(forecast_errors, 20)
+```
+
 ## Naïve Forecasting
 
 The naïve method uses the most recent actual value as the one-step-ahead forecast.
@@ -222,7 +265,10 @@ The moving average method tests 3-month, 6-month, and 12-month windows. The sele
 
 ```{r moving-average-plot}
 moving_average_result <- method_lookup[["Moving Average"]]
-moving_average_result$note
+data.frame(
+  Selected_Window_Months = moving_average_result$selected_window,
+  Justification = moving_average_result$note
+)
 save_forecast_plot(test_data, moving_average_result$forecast, moving_average_result$method, "outputs/figures/moving_average_plot.png")
 ```
 
@@ -232,7 +278,12 @@ Weights are assigned to the latest three observations, with more importance give
 
 ```{r weighted-moving-average-plot}
 weighted_ma_result <- method_lookup[["Weighted Moving Average"]]
-weighted_ma_result$note
+data.frame(
+  Oldest_Weight = weighted_ma_result$weights[3],
+  Middle_Weight = weighted_ma_result$weights[2],
+  Most_Recent_Weight = weighted_ma_result$weights[1],
+  Weighting_Logic = weighted_ma_result$note
+)
 save_forecast_plot(test_data, weighted_ma_result$forecast, weighted_ma_result$method, "outputs/figures/weighted_moving_average_plot.png")
 ```
 
@@ -242,7 +293,10 @@ Single exponential smoothing is estimated through `HoltWinters()` with a level c
 
 ```{r exponential-smoothing-plot}
 exponential_result <- method_lookup[["Exponential Smoothing"]]
-exponential_result$note
+data.frame(
+  Level_Alpha = round(exponential_result$alpha, 4),
+  Parameter_Explanation = exponential_result$note
+)
 save_forecast_plot(test_data, exponential_result$forecast, exponential_result$method, "outputs/figures/exponential_smoothing_plot.png")
 ```
 
@@ -252,7 +306,11 @@ This method is considered because the series may contain medium-term movement ev
 
 ```{r trend-adjusted-plot}
 trend_adjusted_result <- method_lookup[["Trend-Adjusted Exponential Smoothing"]]
-trend_adjusted_result$note
+data.frame(
+  Level_Alpha = round(trend_adjusted_result$alpha, 4),
+  Trend_Beta = round(trend_adjusted_result$beta, 4),
+  Trend_Assessment = "The method is tested because the series has medium-term movement, but accuracy is compared against seasonal alternatives."
+)
 save_forecast_plot(test_data, trend_adjusted_result$forecast, trend_adjusted_result$method, "outputs/figures/trend_adjusted_smoothing_plot.png")
 ```
 
@@ -262,7 +320,12 @@ The linear trend projection estimates a trend equation using a time index.
 
 ```{r trend-projection-plot}
 linear_trend_result <- method_lookup[["Linear Trend Projection"]]
-linear_trend_result$note
+trend_coefficients <- coef(linear_trend_result$model)
+data.frame(
+  Trend_Equation = linear_trend_result$note,
+  Intercept_Interpretation = paste("The intercept", round(trend_coefficients[1], 4), "is the fitted starting level when the time index is zero."),
+  Slope_Interpretation = paste("The slope", round(trend_coefficients[2], 4), "is the average monthly change in percentage points implied by the linear trend.")
+)
 summary(linear_trend_result$model)
 save_forecast_plot(test_data, linear_trend_result$forecast, linear_trend_result$method, "outputs/figures/trend_projection_plot.png")
 ```
@@ -274,8 +337,17 @@ The series is monthly, so 12 additive seasonal indices are estimated.
 ```{r seasonal-indices-plot}
 seasonal_result <- method_lookup[["Seasonal Indices"]]
 seasonal_result$seasonal_index
+data.frame(
+  Number_of_Seasons = nrow(seasonal_result$seasonal_index),
+  High_Season_Month = seasonal_result$seasonal_index$month[which.max(seasonal_result$seasonal_index$seasonal_effect)],
+  High_Season_Index = round(max(seasonal_result$seasonal_index$seasonal_effect), 4),
+  Low_Season_Month = seasonal_result$seasonal_index$month[which.min(seasonal_result$seasonal_index$seasonal_effect)],
+  Low_Season_Index = round(min(seasonal_result$seasonal_index$seasonal_effect), 4)
+)
 save_forecast_plot(test_data, seasonal_result$forecast, seasonal_result$method, "outputs/figures/seasonal_indices_plot.png")
 ```
+
+The seasonal index method is appropriate because the data are monthly and the same calendar months recur every year. The high-season and low-season months identify where monthly producer price changes tend to be above or below the average monthly change.
 
 ## Additive Decomposition
 
@@ -283,7 +355,13 @@ Additive decomposition is suitable because the series is measured as monthly per
 
 ```{r additive-decomposition-plot}
 additive_result <- method_lookup[["Additive Decomposition"]]
-plot(additive_result$decomposition)
+additive_components <- data.frame(
+  Trend_Component_Mean = round(mean(additive_result$decomposition$trend, na.rm = TRUE), 4),
+  Seasonal_Component_Min = round(min(additive_result$decomposition$seasonal, na.rm = TRUE), 4),
+  Seasonal_Component_Max = round(max(additive_result$decomposition$seasonal, na.rm = TRUE), 4),
+  Residual_Component_SD = round(sd(additive_result$decomposition$random, na.rm = TRUE), 4)
+)
+additive_components
 save_forecast_plot(test_data, additive_result$forecast, additive_result$method, "outputs/figures/additive_decomposition_plot.png")
 ```
 
@@ -301,7 +379,14 @@ This regression uses a time trend and monthly seasonal dummy variables.
 
 ```{r regression-seasonal-plot}
 regression_result <- method_lookup[["Regression with Trend and Seasonal Dummy Variables"]]
-regression_result$note
+regression_coefficients <- as.data.frame(summary(regression_result$model)$coefficients)
+regression_coefficients$Term <- rownames(regression_coefficients)
+rownames(regression_coefficients) <- NULL
+regression_coefficients[, c("Term", "Estimate", "Std. Error", "t value", "Pr(>|t|)")]
+data.frame(
+  Trend_Coefficient_Interpretation = "The time-trend coefficient measures the fitted average monthly change after controlling for month effects.",
+  Seasonal_Dummy_Interpretation = "Each monthly dummy coefficient measures that month's average difference from the reference month, holding the time trend constant."
+)
 summary(regression_result$model)
 save_forecast_plot(test_data, regression_result$forecast, regression_result$method, "outputs/figures/regression_seasonal_dummy_plot.png")
 ```
@@ -344,6 +429,8 @@ final_forecast
 
 The superior method is selected from applicable methods using holdout MAPE and MAD, while also checking whether the method is structurally reasonable for a monthly series with seasonality and volatile percentage changes. The chosen method is therefore based on both quantitative accuracy and suitability to the data structure.
 
+In this analysis, Seasonal Indices is selected because it has the lowest holdout MAPE among the applicable methods and directly matches the monthly structure of the selected TÜİK series. Trend-only and smoothing-based methods have larger tracking signal magnitudes, which indicates less balanced forecast errors during the holdout period.
+
 ```{r superior-plot}
 save_superior_plot(
   series,
@@ -354,9 +441,15 @@ save_superior_plot(
 )
 ```
 
+# Interpretation of Results
+
+The selected TÜİK variable represents the monthly percentage change in the Agricultural Products Producer Price Index. This variable is suitable for forecasting because it is numeric, regularly observed at monthly frequency, and available over a long ordered time span from 2010-02 to 2026-04.
+
+The exploratory analysis shows volatile monthly changes with recurring month-level differences. Seasonal Indices performs better than the competing methods in the holdout comparison, while trend-only and decomposition-based alternatives produce larger aggregate errors or stronger tracking-signal imbalance. The final forecast of `r round(superior_forecast, 4)` percent for `r forecast_target_period` means that the selected method expects a small negative monthly change in the index for the next period after the latest available TÜİK observation.
+
 # Limitations
 
-The series measures monthly percentage change, which can be volatile and negative. This makes multiplicative decomposition unsuitable. The notebook uses the live TÜİK dataflow verified through `tuikr::statistical_tables()`, but the SDMX download helper `tuikr::statistical_data()` returned HTTP 401 in the local environment, so the verified dataflow is accessed through the TÜİK Data Browser JSON endpoint in reproducible R code.
+The series measures monthly percentage change, which can be volatile and negative. This makes multiplicative decomposition unsuitable. The model comparison is based on a 24-month holdout window, so the results may change after later TÜİK revisions or unusual economic shocks. The notebook uses the live TÜİK dataflow verified through `tuikr::statistical_tables()`, but the SDMX download helper `tuikr::statistical_data()` returned HTTP 401 in the local environment, so the verified dataflow is accessed through the TÜİK Data Browser JSON endpoint in reproducible R code. This fallback still satisfies the course-approved requirement that data access must happen inside R without manual download or manually prepared data files.
 
 # Reproducibility Notes
 

@@ -1,5 +1,6 @@
 Sys.setenv(CURL_SSL_BACKEND = "openssl")
 
+# Fixed identifiers for the selected TÜİK table verified through tuikr.
 target_theme_id <- 6
 target_node_id <- 1
 target_dataflow_id <- "TR,DF_TARIM_URUNLERI_UFE_DEGISIM_V1,1.0"
@@ -19,11 +20,13 @@ project_source_info <- function() {
 }
 
 run_with_retry <- function(description, expr, attempts = 4, pause_seconds = 3) {
+  expr_call <- substitute(expr)
+  expr_env <- parent.frame()
   last_error <- NULL
 
   for (attempt in seq_len(attempts)) {
     result <- tryCatch(
-      force(expr),
+      eval(expr_call, envir = expr_env),
       error = function(error) {
         last_error <<- error
         NULL
@@ -43,6 +46,7 @@ run_with_retry <- function(description, expr, attempts = 4, pause_seconds = 3) {
   stop(last_error)
 }
 
+# Decode compact Data Browser observation offsets into dimension indexes.
 decode_offset <- function(offset, sizes) {
   indexes <- integer(length(sizes))
   remainder <- offset
@@ -55,6 +59,7 @@ decode_offset <- function(offset, sizes) {
   indexes
 }
 
+# Retrieve the verified TÜİK dataflow through reproducible R code.
 read_data_browser_json <- function(dataflow_id = target_dataflow_id, node_id = target_node_id) {
   data_url <- paste0(
     "https://databrowser2.tuik.gov.tr/api/core/nodes/",
@@ -90,6 +95,7 @@ read_data_browser_json <- function(dataflow_id = target_dataflow_id, node_id = t
   jsonlite::fromJSON(rawToChar(response$content), simplifyVector = FALSE)
 }
 
+# Convert the JSON-stat style payload into one row per observation.
 decode_data_browser_values <- function(payload) {
   dimension_ids <- payload$id
   dimension_sizes <- as.integer(payload$size)
@@ -117,6 +123,7 @@ decode_data_browser_values <- function(payload) {
 }
 
 fetch_selected_series <- function() {
+  # Confirm that the selected dataflow exists in the tuikr catalog before analysis.
   tables <- run_with_retry(
     "tuikr::statistical_tables()",
     tuikr::statistical_tables(target_theme_id, lang = "en")
@@ -132,6 +139,7 @@ fetch_selected_series <- function() {
   payload <- read_data_browser_json(target_dataflow_id, target_node_id)
   long_data <- decode_data_browser_values(payload)
 
+  # Select the monthly Türkiye total rate-of-change series required for forecasting.
   selected_series <- long_data |>
     dplyr::filter(
       INDICATOR == "F_TARUFE",

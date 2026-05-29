@@ -1,4 +1,5 @@
 forecast_accuracy <- function(actual, forecast) {
+  # Keep accuracy calculations on matched actual/forecast periods only.
   ok <- is.finite(actual) & is.finite(forecast)
   actual <- actual[ok]
   forecast <- forecast[ok]
@@ -44,5 +45,32 @@ comparison_row <- function(method_name, actual, forecast, next_forecast, applica
     Next_Period_Forecast = next_forecast,
     Applicable = TRUE,
     Note = note
+  )
+}
+
+forecast_error_rows <- function(method_result, test_data) {
+  # Preserve the detailed forecast errors behind each aggregate comparison row.
+  applicable <- if (is.null(method_result$applicable)) TRUE else method_result$applicable
+
+  if (!applicable) {
+    return(data.frame(
+      Method = method_result$method,
+      Period = NA_character_,
+      Actual = NA_real_,
+      Forecast = NA_real_,
+      Forecast_Error = NA_real_,
+      Applicable = FALSE,
+      Note = method_result$note
+    ))
+  }
+
+  data.frame(
+    Method = method_result$method,
+    Period = test_data$period,
+    Actual = test_data$value,
+    Forecast = method_result$forecast,
+    Forecast_Error = test_data$value - method_result$forecast,
+    Applicable = TRUE,
+    Note = method_result$note
   )
 }
