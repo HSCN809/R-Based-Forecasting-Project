@@ -85,7 +85,7 @@ The series is a monthly percentage-change series, so it can be volatile and nega
 
 ## 12. Reproducibility
 
-Run the project from the repository root. The main entry point is `main.R`. It calls `R/dependencies.R`, installs missing CRAN packages automatically, installs `tuikr` from GitHub if it is not already available, checks that Pandoc is available, and renders the notebook to HTML.
+Run the project from the repository root. The main entry point is `main.R`. It calls `R/dependencies.R`, installs missing CRAN packages automatically, installs `tuikr` from GitHub if it is not already available, checks that Pandoc is available, and renders the notebook to HTML. The script prints short step-by-step logs while it runs.
 
 ```r
 source("main.R")

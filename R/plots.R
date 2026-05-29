@@ -6,7 +6,13 @@ theme_project <- function() {
     )
 }
 
+ensure_plot_directory <- function(path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+}
+
 save_actual_series_plot <- function(series, path) {
+  ensure_plot_directory(path)
+
   plot <- ggplot2::ggplot(series, ggplot2::aes(x = date, y = value)) +
     ggplot2::geom_line(color = "#1f77b4", linewidth = 0.6) +
     ggplot2::labs(
@@ -22,6 +28,8 @@ save_actual_series_plot <- function(series, path) {
 
 save_forecast_plot <- function(test_data, forecast, method_name, path) {
   # Use the same actual-vs-forecast structure for all comparable methods.
+  ensure_plot_directory(path)
+
   plot_data <- dplyr::bind_rows(
     data.frame(date = test_data$date, value = test_data$value, series = "Actual"),
     data.frame(date = test_data$date, value = forecast, series = "Forecast")
@@ -45,6 +53,8 @@ save_forecast_plot <- function(test_data, forecast, method_name, path) {
 
 save_superior_plot <- function(full_series, next_period, next_forecast, method_name, path) {
   # Highlight the final next-period forecast against the full observed series.
+  ensure_plot_directory(path)
+
   next_date <- as.Date(paste0(next_period, "-01"))
   plot_data <- dplyr::bind_rows(
     data.frame(date = full_series$date, value = full_series$value, series = "Actual"),

@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 Sys.setenv(CURL_SSL_BACKEND = "openssl")
 
 source("R/dependencies.R")
-ensure_project_packages()
+ensure_project_packages(verbose = FALSE)
 
 library(dplyr)
 library(ggplot2)
