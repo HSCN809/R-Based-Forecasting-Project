@@ -56,7 +56,25 @@ ensure_cran_package <- function(package, verbose = TRUE) {
   }
 
   project_log(paste0("  - ", package, ": installing from CRAN"), verbose)
-  install.packages(package, repos = "https://cloud.r-project.org", quiet = !verbose)
+  install_result <- tryCatch(
+    {
+      install.packages(package, repos = "https://cloud.r-project.org", quiet = TRUE)
+      TRUE
+    },
+    error = function(error) {
+      project_log(paste0("  - ", package, ": quiet install failed; retrying with full logs"), verbose)
+      FALSE
+    }
+  )
+
+  if (!install_result || !project_package_available(package)) {
+    install.packages(package, repos = "https://cloud.r-project.org", quiet = FALSE)
+  }
+
+  if (!project_package_available(package)) {
+    stop("Package installation failed: ", package, call. = FALSE)
+  }
+
   invisible(TRUE)
 }
 
@@ -68,7 +86,25 @@ ensure_tuikr_package <- function(verbose = TRUE) {
 
   project_log("  - tuikr: installing from GitHub", verbose)
   ensure_cran_package("remotes", verbose = verbose)
-  remotes::install_github("emraher/tuikr", upgrade = "never", quiet = !verbose)
+  install_result <- tryCatch(
+    {
+      remotes::install_github("emraher/tuikr", upgrade = "never", quiet = TRUE)
+      TRUE
+    },
+    error = function(error) {
+      project_log("  - tuikr: quiet GitHub install failed; retrying with full logs", verbose)
+      FALSE
+    }
+  )
+
+  if (!install_result || !project_package_available("tuikr")) {
+    remotes::install_github("emraher/tuikr", upgrade = "never", quiet = FALSE)
+  }
+
+  if (!project_package_available("tuikr")) {
+    stop("Package installation failed: tuikr", call. = FALSE)
+  }
+
   invisible(TRUE)
 }
 
