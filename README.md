@@ -85,13 +85,13 @@ The series is a monthly percentage-change series, so it can be volatile and nega
 
 ## 12. Reproducibility
 
-Run the project from the repository root. The notebook and `run_analysis.R` call `R/dependencies.R`, which installs missing CRAN packages automatically and installs `tuikr` from GitHub if it is not already available.
+Run the project from the repository root. The main entry point is `main.R`. It calls `R/dependencies.R`, installs missing CRAN packages automatically, installs `tuikr` from GitHub if it is not already available, checks that Pandoc is available, and renders the notebook to HTML.
 
 ```r
-source("run_analysis.R")
+source("main.R")
 ```
 
-Render the full notebook after `rmarkdown` is available:
+Render the full notebook manually after the required packages are available:
 
 ```r
 rmarkdown::render("forecasting_project.Rmd")
@@ -117,6 +117,7 @@ tuik-forecasting-project/
 ├── README.md
 ├── forecasting_project.Rmd
 ├── forecasting_project.html
+├── main.R
 ├── run_analysis.R
 ├── outputs/
 │   ├── tables/
