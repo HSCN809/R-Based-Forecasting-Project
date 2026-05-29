@@ -7,3 +7,5 @@
 *.log
 Rplots.pdf
 .claude/
+.clean-r-lib-test/
+.clean-r-site-test/
