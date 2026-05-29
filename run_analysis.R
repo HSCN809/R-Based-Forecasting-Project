@@ -123,6 +123,15 @@ write.csv(
   fileEncoding = "UTF-8"
 )
 
+writexl::write_xlsx(
+  list(
+    accuracy_comparison = accuracy_comparison,
+    forecast_errors = forecast_errors,
+    final_forecast = final_forecast
+  ),
+  "outputs/tables/forecast_results.xlsx"
+)
+
 invisible(save_superior_plot(
   series,
   forecast_target_period,

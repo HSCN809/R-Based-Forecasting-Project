@@ -58,7 +58,7 @@ Multiplicative decomposition is marked as not applicable because the selected mo
 
 ## 7. Forecast Accuracy Comparison
 
-The model comparison table is written to `outputs/tables/accuracy_comparison.csv`. It includes Bias / Mean Error, MAD, MSE, MAPE, RSFE, Tracking Signal, applicability status, notes, and the next-period forecast. Period-by-period forecast errors are also written to `outputs/tables/forecast_errors.csv`. Multiplicative decomposition remains in the comparison table as not applicable, with the technical reason documented in the note column.
+The model comparison table is written to `outputs/tables/accuracy_comparison.csv`. It includes Bias / Mean Error, MAD, MSE, MAPE, RSFE, Tracking Signal, applicability status, notes, and the next-period forecast. Period-by-period forecast errors are also written to `outputs/tables/forecast_errors.csv`. An additional Excel workbook, `outputs/tables/forecast_results.xlsx`, contains the accuracy comparison, forecast errors, and final forecast in separate sheets. Multiplicative decomposition remains in the comparison table as not applicable, with the technical reason documented in the note column.
 
 ## 8. Selection of the Superior Method
 
@@ -123,7 +123,8 @@ tuik-forecasting-project/
 │   ├── tables/
 │   │   ├── accuracy_comparison.csv
 │   │   ├── forecast_errors.csv
-│   │   └── final_forecast.csv
+│   │   ├── final_forecast.csv
+│   │   └── forecast_results.xlsx
 │   └── figures/
 │       ├── actual_series_plot.png
 │       ├── naive_forecast_plot.png

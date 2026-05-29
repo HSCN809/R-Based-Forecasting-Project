@@ -2,7 +2,7 @@ Sys.setenv(CURL_SSL_BACKEND = "openssl")
 
 project_cran_packages <- c(
   "curl", "jsonlite", "tibble", "dplyr", "tidyr",
-  "ggplot2", "zoo", "forecast", "knitr", "rmarkdown"
+  "ggplot2", "zoo", "forecast", "knitr", "rmarkdown", "writexl"
 )
 
 project_log <- function(message, verbose = TRUE) {

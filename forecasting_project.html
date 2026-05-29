@@ -749,6 +749,15 @@ write.csv(
   fileEncoding = &quot;UTF-8&quot;
 )
 
+writexl::write_xlsx(
+  list(
+    accuracy_comparison = accuracy_comparison,
+    forecast_errors = forecast_errors,
+    final_forecast = final_forecast
+  ),
+  &quot;outputs/tables/forecast_results.xlsx&quot;
+)
+
 final_forecast</code></pre>
 <pre><code>##   Selected_Superior_Method Data_Access_Date Latest_Available_Observation
 ## 1         Seasonal Indices       2026-05-29                      2026-04
